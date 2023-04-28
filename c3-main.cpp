@@ -100,29 +100,32 @@ void drawCar(Pose pose, int num, Color color, double alpha, pcl::visualization::
 }
 
 // Eigen::Matrix4d ICP(vector<int> associations, PointCloudT::Ptr target, PointCloudT::Ptr source, Pose startingPose, int iterations, pcl::visualization::PCLVisualizer::Ptr& viewer)
-Eigen::Matrix4d ICP(PointCloudT::Ptr target, PointCloudT::Ptr source, Pose startingPose, int iterations) {	
+Eigen::Matrix4d ICP(PointCloudT::Ptr target, PointCloudT::Ptr source, Pose startingPose) {	
 	
 	// align source with starting pose
+
 	Eigen::Matrix4d initTransform = transform3D(startingPose.rotation.yaw, startingPose.rotation.pitch, startingPose.rotation.roll, 
 												startingPose.position.x, startingPose.position.y, startingPose.position.z);
+	
 	PointCloudT::Ptr transformSource (new PointCloudT);
 	pcl::transformPointCloud(*source, *transformSource, initTransform);
 
 	// Create an ICP object
 	// pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
 	pcl::IterativeClosestPoint<PointT, PointT> icp;
+	int iterations = 60;
 	icp.setMaximumIterations(iterations);
-	icp.setMaxCorrespondenceDistance(3);
 	icp.setInputTarget(target);
 	icp.setInputSource(transformSource);
-
+	icp.setTransformationEpsilon(1e-8);
+	icp.setMaxCorrespondenceDistance(3);
 	// Create a new point cloud to hold the aligned output
 	PointCloudT::Ptr cloud_icp (new PointCloudT);
 	// Apply the ICP algorithm and store the output in aligned_cloud
 	icp.align(*cloud_icp);
 
 	Eigen::Matrix4d transformation_matrix;
-	transformation_matrix << Eigen::MatrixXd::Identity();
+	transformation_matrix << Eigen::Matrix4d::Identity();
 
 	transformation_matrix = icp.getFinalTransformation().cast<double>();
 	transformation_matrix = transformation_matrix * initTransform;
@@ -236,21 +239,24 @@ int main(){
   		viewer->spinOnce ();
 	
 	// TODO
-	// Create a voxel grid filter object
-	pcl::VoxelGrid<PointT> voxel_filter;
-	float voxel_resolution = 0.2;
-	voxel_filter.setLeafSize(voxel_resolution, voxel_resolution, voxel_resolution);	
+
+	
 
 		if(!new_scan){
 			
 			new_scan = true;
 			// TODO: (Filter scan using voxel filter)
-			voxel_filter.setInputCloud(scanCloud);
-			voxel_filter.filter(*cloudFiltered);
+			// Create a voxel grid filter object
+			pcl::VoxelGrid<PointT> voxel_grid;
+			voxel_grid.setInputCloud(scanCloud);
+			float voxel_resolution = 0.5;
+			voxel_grid.setLeafSize(voxel_resolution, voxel_resolution, voxel_resolution);	
+
+			typename pcl::PointCloud<PointT>::Ptr cloudFiltered (new pcl::PointCloud<PointT>);
+			voxel_grid.filter(*cloudFiltered);
 
 			// TODO: Find pose transform by using ICP or NDT matching
-			int max_iterations = 15;
-			transformation_matrix = ICP(mapCloud, cloudFiltered, pose, max_iterations);
+			transformation_matrix = ICP(mapCloud, cloudFiltered, pose);
 			pose = getPose(transformation_matrix);
 
 			// TODO: Transform scan so it aligns with ego's actual pose and render that scan
